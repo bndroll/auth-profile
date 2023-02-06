@@ -12,6 +12,7 @@ import { ActiveUserData } from '../interfaces/active-user-data.interface';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { InvalidatedRefreshTokenError, RefreshTokenIdsStorage } from './refresh-token-ids.storage';
 import { randomUUID } from 'crypto';
+import { GenerateAliasService } from './generate-alias.service';
 
 
 @Injectable()
@@ -21,17 +22,18 @@ export class AuthenticationService {
 		private readonly hashingService: HashingService,
 		private readonly jwtService: JwtService,
 		@Inject(jwtConfig.KEY) private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
-		private readonly refreshTokenIdsStorage: RefreshTokenIdsStorage
+		private readonly refreshTokenIdsStorage: RefreshTokenIdsStorage,
+		private readonly generateAliasService: GenerateAliasService
 	) {
 	}
 
-	async signUp(signUpDto: SignUpDto) {
+	async signUp({email, name, password}: SignUpDto) {
 		try {
 			const user = new User();
-			user.email = signUpDto.email;
-			user.name = signUpDto.name;
-			user.password = await this.hashingService.hash(signUpDto.password);
-			// TODO - генерация имени
+			user.email = email;
+			user.name = name;
+			user.password = await this.hashingService.hash(password);
+			user.alias = await this.generateAliasService.generateAlias({name, email});
 			await this.userRepository.save(user);
 		} catch (err) {
 			const pgUniqueViolationErrorCode = '23505';
@@ -42,13 +44,13 @@ export class AuthenticationService {
 		}
 	}
 
-	async signIn(signInDto: SignInDto) {
-		const user = await this.userRepository.findOneBy({email: signInDto.email});
+	async signIn({email, password}: SignInDto) {
+		const user = await this.userRepository.findOneBy({email: email});
 		if (!user) {
 			throw new UnauthorizedException('User does not exist');
 		}
 
-		const isEqual = await this.hashingService.compare(signInDto.password, user.password);
+		const isEqual = await this.hashingService.compare(password, user.password);
 		if (!isEqual) {
 			throw new UnauthorizedException('Password doest not match');
 		}
@@ -60,13 +62,13 @@ export class AuthenticationService {
 		await this.refreshTokenIdsStorage.invalidate(id);
 	}
 
-	async refreshToken(refreshTokenDto: RefreshTokenDto) {
+	async refreshToken({refreshToken}: RefreshTokenDto) {
 		try {
 			const {
 				sub,
 				refreshTokenId
 			} = await this.jwtService.verifyAsync<Pick<ActiveUserData, 'sub'> & { refreshTokenId: string }>(
-				refreshTokenDto.refreshToken,
+				refreshToken,
 				{
 					audience: this.jwtConfiguration.audience,
 					issuer: this.jwtConfiguration.issuer,

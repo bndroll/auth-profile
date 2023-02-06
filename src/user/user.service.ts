@@ -14,8 +14,16 @@ export class UserService {
 		@InjectRepository(User) private readonly userRepository: Repository<User>,
 		private readonly fileStorageService: FileStorageService,
 		private readonly fileService: FileService,
-		private readonly generateUsernameService: GenerateAliasService
+		private readonly generateAliasService: GenerateAliasService
 	) {
+	}
+
+	async findAliases(id: number) {
+		const user = await this.userRepository.findOneBy({id});
+		return await this.generateAliasService.generateAliases({
+			name: user.name,
+			email: user.email
+		});
 	}
 
 	async findAll() {
@@ -71,7 +79,7 @@ export class UserService {
 	}
 
 	async update(id: number, dto: UpdateUserDto) {
-		const isValid = this.generateUsernameService.testAlias(dto.alias);
+		const isValid = await this.generateAliasService.testAlias(dto.alias);
 		if (!isValid) {
 			throw new BadRequestException('Alias must start with latinity character and contain only latinity letters and numbers');
 		}
